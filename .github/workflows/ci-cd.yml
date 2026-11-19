@@ -120,7 +120,7 @@ jobs:
         id: img
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/realestate-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
