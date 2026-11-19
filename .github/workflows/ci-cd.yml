@@ -44,7 +44,7 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/realestate_test
       SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/realestate_shadow
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -86,7 +86,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -115,7 +115,7 @@ jobs:
       matrix:
         service: [backend, frontend]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tên image (GHCR yêu cầu chữ thường)
         id: img
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/realestate-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
@@ -147,7 +147,7 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 30
       - name: Tóm tắt thay đổi
@@ -200,7 +200,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Cấu hình SSH
         run: |
           install -m 700 -d ~/.ssh
