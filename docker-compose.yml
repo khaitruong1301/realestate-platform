@@ -1,0 +1,40 @@
+# Môi trường DEV local: chỉ chạy database. FE/BE chạy bằng `npm run dev` để có hot-reload.
+#   docker compose up -d
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: realestate-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: realestate
+    ports:
+      - "127.0.0.1:5442:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # DB riêng cho test: dữ liệu nằm trong RAM (tmpfs), mỗi lần khởi động là sạch
+  db-test:
+    image: postgres:16-alpine
+    container_name: realestate-db-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: realestate_test
+    ports:
+      - "127.0.0.1:5443:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db_data:

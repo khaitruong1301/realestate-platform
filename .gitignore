@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+
+# Secrets — tuyệt đối không commit
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Claude Code: cấu hình cá nhân
+.claude/settings.local.json
+*.tsbuildinfo

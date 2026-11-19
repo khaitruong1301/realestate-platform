@@ -1,0 +1,224 @@
+# Pipeline:
+#   test BE + FE song song -> build Docker image -> (chỉ main) push GHCR
+#   -> ⏸ CHỜ DUYỆT TAY (Environment "production", reviewer bấm Approve)
+#   -> deploy server -> smoke test
+# Theo dõi: tab "Actions" trên GitHub. Lịch sử deploy: tab "Environments > production".
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: # chạy tay từ tab Actions
+
+# PR: push commit mới thì huỷ lần chạy cũ. main: mỗi lần chạy độc lập
+# (không để 1 run đang chờ duyệt chặn run mới).
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ------------------------------------------------------------------ BACKEND
+  backend:
+    name: Backend · lint, typecheck, test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: realestate_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/realestate_test
+      SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/realestate_shadow
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Kiểm tra quên tạo migration (schema.prisma lệch với migrations/)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c 'CREATE DATABASE realestate_shadow'
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "$SHADOW_DATABASE_URL" \
+            --exit-code \
+            || { echo "::error::schema.prisma đã đổi nhưng chưa tạo migration. Chạy: npm run db:migrate -- --name <ten>"; exit 1; }
+      - name: Migrate DB test
+        run: npx prisma migrate deploy
+      - name: Test + coverage
+        run: npm run test:coverage
+      - name: Build
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: backend/coverage
+          retention-days: 7
+
+  # ----------------------------------------------------------------- FRONTEND
+  frontend:
+    name: Frontend · lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  # ------------------------------------------------------------- DOCKER IMAGE
+  # PR: chỉ build để chắc Dockerfile không lỗi. main: build + push lên GHCR.
+  docker:
+    name: Docker · ${{ matrix.service }}
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tên image (GHCR yêu cầu chữ thường)
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/realestate-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.service }}
+          push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ steps.img.outputs.name }}:${{ github.sha }}
+            ${{ steps.img.outputs.name }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  # ------------------------------------------------------- THÔNG TIN ĐỂ DUYỆT
+  # Ghi tóm tắt phiên bản sắp deploy lên trang Summary để reviewer xem trước khi Approve.
+  release-info:
+    name: Thông tin phiên bản chờ duyệt
+    needs: [docker]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 30
+      - name: Tóm tắt thay đổi
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          {
+            echo "## ⏸ Chờ duyệt deploy lên production"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit | [\`${GITHUB_SHA::7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA}) |"
+            echo "| Người push | @${{ github.actor }} |"
+            echo "| Server | http://${{ vars.DEPLOY_HOST }} |"
+            echo "| Backend image | \`ghcr.io/${OWNER}/realestate-backend:${GITHUB_SHA::7}…\` |"
+            echo "| Frontend image | \`ghcr.io/${OWNER}/realestate-frontend:${GITHUB_SHA::7}…\` |"
+            echo ""
+            if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$BEFORE" 2>/dev/null; then
+              echo "### Các commit trong lần deploy này"
+              git log --pretty='- `%h` %s — %an' "$BEFORE..$GITHUB_SHA" | head -30
+              echo ""
+              echo "[Xem toàn bộ thay đổi](${{ github.server_url }}/${{ github.repository }}/compare/${BEFORE}...${GITHUB_SHA})"
+              if git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -q '^backend/prisma/migrations/'; then
+                echo ""
+                echo "> ⚠️ **Có migration database** — kiểm tra kỹ trước khi duyệt (deploy.sh sẽ backup DB trước)."
+              fi
+            else
+              git log -1 --pretty='- `%h` %s — %an'
+            fi
+            echo ""
+            echo "**Cách duyệt:** bấm nút **Review deployments** ở đầu trang này → tick *production* → **Approve and deploy** (hoặc **Reject**)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ------------------------------------------------------------------- DEPLOY
+  # Environment "production" được cấu hình Required reviewers trong
+  # Settings > Environments, nên job này DỪNG LẠI chờ người duyệt bấm Approve.
+  deploy:
+    name: Deploy · production (cần duyệt tay)
+    needs: [docker, release-info]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: http://${{ vars.DEPLOY_HOST }}
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false # không bao giờ huỷ giữa chừng 1 lần deploy
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cấu hình SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Copy compose + scripts lên server
+        run: |
+          scp infra/docker-compose.prod.yml infra/scripts/*.sh \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}:/opt/realestate/
+      - name: Chạy deploy.sh (backup -> pull -> up -> health check -> rollback nếu lỗi)
+        run: |
+          # Token đi qua stdin để không lộ trong process list của server
+          echo "${{ secrets.GITHUB_TOKEN }}" | ssh ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }} \
+            "read -r GHCR_TOKEN; export GHCR_TOKEN GHCR_USER='${{ github.actor }}' TAG='${{ github.sha }}'; cd /opt/realestate && chmod +x *.sh && ./deploy.sh"
+      - name: Smoke test từ bên ngoài
+        run: |
+          curl -fsS --retry 5 --retry-delay 3 http://${{ vars.DEPLOY_HOST }}/api/health
+          curl -fsS --retry 5 --retry-delay 3 http://${{ vars.DEPLOY_HOST }}/ | grep -q '<div id="root">'
+          curl -fsS "http://${{ vars.DEPLOY_HOST }}/api/properties?limit=1" | jq -e '.pagination.total >= 0'
+          echo "### ✅ Đã deploy \`${GITHUB_SHA::7}\` lên http://${{ vars.DEPLOY_HOST }} (duyệt bởi reviewer của environment production)" >> "$GITHUB_STEP_SUMMARY"

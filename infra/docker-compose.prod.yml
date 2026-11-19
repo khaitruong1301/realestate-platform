@@ -1,0 +1,55 @@
+# PRODUCTION trên server (/opt/realestate). CI copy file này lên mỗi lần deploy.
+# Image được build trên GitHub Actions và đẩy lên GHCR; server chỉ pull về chạy.
+# Biến lấy từ /opt/realestate/.env (KHÔNG commit): POSTGRES_PASSWORD, JWT_SECRET, ...
+name: realestate
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-realestate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Thiếu POSTGRES_PASSWORD trong .env}
+      POSTGRES_DB: ${POSTGRES_DB:-realestate}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    # KHÔNG publish cổng 5432 ra ngoài internet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { memory: 256m }
+    command: postgres -c shared_buffers=64MB -c max_connections=50 -c work_mem=2MB
+
+  backend:
+    image: ${BACKEND_IMAGE:?Thiếu BACKEND_IMAGE}:${TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-realestate}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-realestate}?connection_limit=10
+      JWT_SECRET: ${JWT_SECRET:?Thiếu JWT_SECRET trong .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
+    deploy:
+      resources:
+        limits: { memory: 256m }
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?Thiếu FRONTEND_IMAGE}:${TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      backend: { condition: service_healthy }
+    ports:
+      - "80:80"
+    deploy:
+      resources:
+        limits: { memory: 64m }
+
+volumes:
+  db_data:

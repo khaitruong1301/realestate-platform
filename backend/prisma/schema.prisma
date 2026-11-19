@@ -1,0 +1,105 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  AGENT
+  ADMIN
+}
+
+enum PropertyType {
+  APARTMENT
+  HOUSE
+  LAND
+  VILLA
+  OFFICE
+}
+
+enum ListingType {
+  SALE
+  RENT
+}
+
+enum PropertyStatus {
+  DRAFT
+  PUBLISHED
+  SOLD
+  RENTED
+  HIDDEN
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  fullName     String
+  phone        String?
+  role         Role       @default(USER)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  properties   Property[]
+}
+
+model Property {
+  id          String          @id @default(cuid())
+  title       String
+  slug        String          @unique
+  description String          @db.Text
+  type        PropertyType
+  listingType ListingType
+  status      PropertyStatus  @default(PUBLISHED)
+  /// Giá VND (bán: tổng giá; thuê: giá/tháng)
+  price       Decimal         @db.Decimal(15, 0)
+  /// Diện tích m2
+  area        Decimal         @db.Decimal(10, 2)
+  bedrooms    Int?
+  bathrooms   Int?
+  address     String
+  ward        String?
+  district    String
+  city        String
+  latitude    Float?
+  longitude   Float?
+  agentId     String
+  agent       User            @relation(fields: [agentId], references: [id])
+  images      PropertyImage[]
+  inquiries   Inquiry[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([city, district])
+  @@index([listingType, type, status])
+  @@index([price])
+  @@index([agentId])
+}
+
+model PropertyImage {
+  id         String   @id @default(cuid())
+  url        String
+  position   Int      @default(0)
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+}
+
+model Inquiry {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name       String
+  phone      String
+  email      String?
+  message    String   @db.Text
+  handled    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([propertyId])
+}
