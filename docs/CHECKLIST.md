@@ -7,11 +7,11 @@ Cập nhật bằng lệnh `/checklist` trong Claude Code.
 
 | Phase | Nội dung | Tiến độ |
 |---|---|---|
-| 0 | Nền tảng: repo, server, Docker, CI/CD | 18/20 |
+| 0 | Nền tảng: repo, server, Docker, CI/CD | 16/25 |
 | 1 | MVP: xem & tìm kiếm tin đăng | 8/12 |
 | 2 | Tài khoản & quản lý tin đăng | 2/12 |
 | 3 | Ảnh, bản đồ, SEO | 0/10 |
-| 4 | Vận hành production | 0/12 |
+| 4 | Vận hành production | 0/11 |
 
 ---
 
@@ -37,12 +37,16 @@ Cập nhật bằng lệnh `/checklist` trong Claude Code.
 - [ ] **Tắt đăng nhập SSH bằng mật khẩu + đổi mật khẩu root** (làm tay, xem DEPLOY.md §6)
 - [ ] Cron backup DB hằng ngày (xem DEPLOY.md §5)
 
-### CI/CD (GitHub Actions)
-- [x] Job test backend (Postgres service, lint, typecheck, kiểm tra quên migration, test + coverage, build)
-- [x] Job test frontend (lint, typecheck, test, build)
-- [x] Build image Docker, push GHCR khi merge `main`
-- [x] Deploy qua SSH: backup DB → pull → up → health check → tự rollback
-- [x] Smoke test sau deploy
+### CI/CD (GitHub Actions) — repo: github.com/khaitruong1301/realestate-platform
+- [x] Repo public, variables `DEPLOY_HOST`/`DEPLOY_USER`, secret `DEPLOY_KNOWN_HOSTS`
+- [x] Environment `production` có Required reviewer (duyệt tay), chỉ cho nhánh `main`
+- [ ] Secret `DEPLOY_SSH_KEY` (bạn tự thêm — xem DEPLOY.md §3)
+- [~] Job test backend (Postgres service, lint, typecheck, kiểm tra quên migration, test + coverage, build)
+- [~] Job test frontend (lint, typecheck, test, build)
+- [~] Build image Docker, push GHCR khi merge `main`
+- [~] Job "Thông tin phiên bản chờ duyệt" + dừng chờ Approve
+- [~] Deploy qua SSH: backup DB → pull → up → health check → tự rollback
+- [~] Smoke test sau deploy
 
 ## Phase 1 — MVP: xem & tìm kiếm
 
@@ -98,6 +102,5 @@ Cập nhật bằng lệnh `/checklist` trong Claude Code.
 - [ ] Theo dõi lỗi (Sentry) cho BE và FE
 - [ ] Môi trường staging (nhánh `develop` → server staging)
 - [ ] GitHub branch protection cho `main`: bắt buộc PR + CI xanh
-- [ ] Bật GitHub environment "production" cần duyệt tay trước khi deploy (tuỳ chọn)
 - [ ] Nâng server lên ≥ 2GB RAM khi có traffic thật
 - [ ] Kiểm thử tải (k6) cho API danh sách
