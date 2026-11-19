@@ -115,21 +115,27 @@ TAG=<git-sha-đầy-đủ> ./deploy.sh
   gunzip -c backups/<file>.sql.gz | docker compose -f docker-compose.prod.yml --env-file .env exec -T db psql -U realestate -d realestate
   ```
 
-## 6. Bảo mật server — việc cần làm tay
+## 6. Bảo mật SSH
 
-Server hiện **vẫn cho phép đăng nhập root bằng mật khẩu** (mật khẩu đã từng được gửi qua chat). Nên làm ngay:
+**Đã làm (2026-11-19):** tắt đăng nhập SSH bằng mật khẩu, root chỉ vào được bằng key. Kiểm tra: `ssh root@206.189.146.98 -o PubkeyAuthentication=no` → `Permission denied (publickey)`.
 
-1. Kiểm tra đăng nhập bằng key OK: `ssh -i ~/.ssh/deploy_realestate root@206.189.146.98 'echo ok'`
-2. Đổi mật khẩu root: `passwd` (giữ làm phương án dự phòng qua console DigitalOcean).
-3. Tắt đăng nhập bằng mật khẩu:
-   ```bash
-   sudo tee /etc/ssh/sshd_config.d/99-hardening.conf <<'EOF'
-   PasswordAuthentication no
-   PermitRootLogin prohibit-password
-   EOF
-   sudo systemctl reload ssh
-   ```
-   Giữ phiên SSH hiện tại, mở **phiên mới** kiểm tra đăng nhập được rồi mới thoát.
+File `/etc/ssh/sshd_config.d/00-hardening.conf`:
+```
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+```
+
+> ⚠️ Tên file phải bắt đầu bằng `00-`. sshd lấy giá trị **đầu tiên** nó đọc được, mà image Ubuntu của DigitalOcean có `50-cloud-init.conf` đặt `PasswordAuthentication yes`. Đặt tên `99-...` sẽ không có tác dụng. Luôn kiểm tra bằng `sshd -T | grep passwordauthentication`.
+
+| Key | Dùng cho |
+|---|---|
+| `~/.ssh/deploy_realestate` (máy dev) | root — quản trị server |
+| `~/.ssh/realestate_ci` (máy dev + secret `DEPLOY_SSH_KEY`) | user deploy — GitHub Actions |
+
+**Còn nên làm:** đổi mật khẩu root (đã từng gửi qua chat), vì nó vẫn đăng nhập được ở *Recovery Console* trên web DigitalOcean: `ssh -i ~/.ssh/deploy_realestate root@206.189.146.98` rồi gõ `passwd`. Cất mật khẩu mới vào trình quản lý mật khẩu.
+
+**Lỡ mất key:** vào DigitalOcean → Droplet → *Access* → *Launch Recovery Console*, đăng nhập root bằng mật khẩu, thêm public key mới vào `/root/.ssh/authorized_keys`.
 
 ## 7. Cài lại server từ đầu
 

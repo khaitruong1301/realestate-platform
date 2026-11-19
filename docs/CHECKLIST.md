@@ -7,7 +7,7 @@ Cập nhật bằng lệnh `/checklist` trong Claude Code.
 
 | Phase | Nội dung | Tiến độ |
 |---|---|---|
-| 0 | Nền tảng: repo, server, Docker, CI/CD | 16/25 |
+| 0 | Nền tảng: repo, server, Docker, CI/CD | 17/26 |
 | 1 | MVP: xem & tìm kiếm tin đăng | 8/12 |
 | 2 | Tài khoản & quản lý tin đăng | 2/12 |
 | 3 | Ảnh, bản đồ, SEO | 0/10 |
@@ -34,7 +34,8 @@ Cập nhật bằng lệnh `/checklist` trong Claude Code.
 - [x] Tự động cập nhật bản vá bảo mật (unattended-upgrades)
 - [x] User `deploy` (nhóm docker) cho CI, thư mục `/opt/realestate`
 - [x] File `/opt/realestate/.env` với secret ngẫu nhiên
-- [ ] **Tắt đăng nhập SSH bằng mật khẩu + đổi mật khẩu root** (làm tay, xem DEPLOY.md §6)
+- [x] Tắt đăng nhập SSH bằng mật khẩu, root chỉ dùng key (`00-hardening.conf`)
+- [ ] **Đổi mật khẩu root** (đã lộ qua chat; vẫn dùng được ở Recovery Console DO) — DEPLOY.md §6
 - [ ] Cron backup DB hằng ngày (xem DEPLOY.md §5)
 
 ### CI/CD (GitHub Actions) — repo: github.com/khaitruong1301/realestate-platform
